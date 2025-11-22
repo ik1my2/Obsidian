@@ -7819,25 +7819,27 @@ function Library:EnableDraggableTabs(enabled)
     local DragState = {
         Active = false,
         DraggedTab = nil,
-        PlaceholderFrame = nil,
-        TouchId = nil, 
+        StartOrder = 0,
+        TouchId = nil,
     }
 
-    local function GetTabIndex(tabButton)
-        return tabButton.LayoutOrder
-    end
-
     local function GetTabAtPosition(y, container)
+        local closest = nil
+        local minDist = math.huge
+        
         for _, child in ipairs(container:GetChildren()) do
-            if child:IsA("TextButton") and child ~= DragState.DraggedTab and child ~= DragState.PlaceholderFrame then
-                local pos = child.AbsolutePosition.Y
-                local size = child.AbsoluteSize.Y
-                if y >= pos and y <= pos + size then
-                    return child
+            if child:IsA("TextButton") and child ~= DragState.DraggedTab then
+                local pos = child.AbsolutePosition.Y + child.AbsoluteSize.Y / 2
+                local dist = math.abs(y - pos)
+                
+                if dist < minDist then
+                    minDist = dist
+                    closest = child
                 end
             end
         end
-        return nil
+        
+        return closest
     end
 
     for tabName, tab in pairs(Library.Tabs) do
@@ -7864,10 +7866,9 @@ function Library:EnableDraggableTabs(enabled)
 
         if not tabButton or not tabsContainer then continue end
 
-        -- Initialize LayoutOrder if not set
         if tabButton.LayoutOrder == 0 then
             local index = 1
-            for i, child in ipairs(tabsContainer:GetChildren()) do
+            for _, child in ipairs(tabsContainer:GetChildren()) do
                 if child:IsA("TextButton") then
                     if child == tabButton then
                         tabButton.LayoutOrder = index
@@ -7884,7 +7885,6 @@ function Library:EnableDraggableTabs(enabled)
         tab.DragConnection = tabButton.InputBegan:Connect(function(input)
             if not Library.Toggled then return end
             
-            
             if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
                 dragStart = true
                 startPos = input.Position
@@ -7895,7 +7895,6 @@ function Library:EnableDraggableTabs(enabled)
         tab.DragMoveConnection = tabButton.InputChanged:Connect(function(input)
             if not dragStart or not Library.Toggled then return end
             
-           
             if input.UserInputType == Enum.UserInputType.MouseMovement or input == DragState.TouchId then
                 if not startPos then return end
                 
@@ -7904,19 +7903,10 @@ function Library:EnableDraggableTabs(enabled)
                 if distance > 10 and not DragState.Active then
                     DragState.Active = true
                     DragState.DraggedTab = tabButton
-                    
-                    DragState.PlaceholderFrame = Instance.new("Frame")
-                    DragState.PlaceholderFrame.BackgroundColor3 = Library.Scheme.AccentColor
-                    DragState.PlaceholderFrame.BackgroundTransparency = 0.7
-                    DragState.PlaceholderFrame.BorderSizePixel = 0
-                    DragState.PlaceholderFrame.Size = tabButton.Size
-                    DragState.PlaceholderFrame.LayoutOrder = tabButton.LayoutOrder
-                    DragState.PlaceholderFrame.Parent = tabsContainer
+                    DragState.StartOrder = tabButton.LayoutOrder
                     
                     tabButton.BackgroundTransparency = 0.5
                     tabButton.ZIndex = 10
-                    
-                   
                     tabsContainer.ScrollingEnabled = false
                 end
                 
@@ -7924,8 +7914,29 @@ function Library:EnableDraggableTabs(enabled)
                     local mouseY = input.Position.Y
                     local targetTab = GetTabAtPosition(mouseY, tabsContainer)
                     
-                    if targetTab and DragState.PlaceholderFrame then
-                        DragState.PlaceholderFrame.LayoutOrder = targetTab.LayoutOrder
+                    if targetTab and targetTab.LayoutOrder ~= tabButton.LayoutOrder then
+                        local targetOrder = targetTab.LayoutOrder
+                        local currentOrder = tabButton.LayoutOrder
+                        
+                        if targetOrder < currentOrder then
+                            for _, child in ipairs(tabsContainer:GetChildren()) do
+                                if child:IsA("TextButton") and child ~= tabButton then
+                                    if child.LayoutOrder >= targetOrder and child.LayoutOrder < currentOrder then
+                                        child.LayoutOrder = child.LayoutOrder + 1
+                                    end
+                                end
+                            end
+                        else
+                            for _, child in ipairs(tabsContainer:GetChildren()) do
+                                if child:IsA("TextButton") and child ~= tabButton then
+                                    if child.LayoutOrder <= targetOrder and child.LayoutOrder > currentOrder then
+                                        child.LayoutOrder = child.LayoutOrder - 1
+                                    end
+                                end
+                            end
+                        end
+                        
+                        tabButton.LayoutOrder = targetOrder
                     end
                 end
             end
@@ -7933,17 +7944,14 @@ function Library:EnableDraggableTabs(enabled)
 
         tab.DragEndConnection = tabButton.InputEnded:Connect(function(input)
             if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch or input == DragState.TouchId then
-                if DragState.Active and DragState.DraggedTab == tabButton and DragState.PlaceholderFrame then
-                    tabButton.LayoutOrder = DragState.PlaceholderFrame.LayoutOrder
+                if DragState.Active and DragState.DraggedTab == tabButton then
                     tabButton.BackgroundTransparency = Library.ActiveTab == tab and 0 or 1
                     tabButton.ZIndex = 1
                     
-                    DragState.PlaceholderFrame:Destroy()
                     DragState.Active = false
                     DragState.DraggedTab = nil
-                    DragState.PlaceholderFrame = nil
+                    DragState.StartOrder = 0
                     DragState.TouchId = nil
-                    
                     
                     tabsContainer.ScrollingEnabled = true
                 end
