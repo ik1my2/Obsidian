@@ -7823,12 +7823,7 @@ function Library:EnableDraggableTabs(enabled)
     }
 
     local function GetTabIndex(tabButton)
-        for i, child in ipairs(tabButton.Parent:GetChildren()) do
-            if child:IsA("TextButton") and child == tabButton then
-                return i
-            end
-        end
-        return -1
+        return tabButton.LayoutOrder
     end
 
     local function GetTabAtPosition(y, container)
@@ -7850,7 +7845,8 @@ function Library:EnableDraggableTabs(enabled)
         local tabButton = nil
         local tabsContainer = nil
         
-        for _, child in ipairs(ScreenGui:GetDescendants()) do
+       
+        for _, child in ipairs(Library.ScreenGui:GetDescendants()) do
             if child:IsA("ScrollingFrame") and child.Parent and child.Parent.Name == "Main" then
                 for _, btn in ipairs(child:GetChildren()) do
                     if btn:IsA("TextButton") then
@@ -7868,8 +7864,18 @@ function Library:EnableDraggableTabs(enabled)
 
         if not tabButton or not tabsContainer then continue end
 
+      
         if tabButton.LayoutOrder == 0 then
-            tabButton.LayoutOrder = GetTabIndex(tabButton)
+            local index = 1
+            for i, child in ipairs(tabsContainer:GetChildren()) do
+                if child:IsA("TextButton") then
+                    if child == tabButton then
+                        tabButton.LayoutOrder = index
+                        break
+                    end
+                    index = index + 1
+                end
+            end
         end
 
         local dragStart = false
@@ -7913,7 +7919,7 @@ function Library:EnableDraggableTabs(enabled)
                     local targetTab = GetTabAtPosition(mouseY, tabsContainer)
                     
                     if targetTab and DragState.PlaceholderFrame then
-                        DragState.PlaceholderFrame.LayoutOrder = GetTabIndex(targetTab)
+                        DragState.PlaceholderFrame.LayoutOrder = targetTab.LayoutOrder
                     end
                 end
             end
@@ -7938,7 +7944,6 @@ function Library:EnableDraggableTabs(enabled)
         end)
     end
 end
-
 
 getgenv().Library = Library
 return Library
