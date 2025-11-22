@@ -7796,5 +7796,149 @@ Library:GiveSignal(Players.PlayerRemoving:Connect(OnPlayerChange))
 Library:GiveSignal(Teams.ChildAdded:Connect(OnTeamChange))
 Library:GiveSignal(Teams.ChildRemoved:Connect(OnTeamChange))
 
+
+function Library:EnableDraggableTabs(enabled)
+    if not enabled then
+        for _, tab in pairs(Library.Tabs) do
+            if tab.DragConnection then
+                tab.DragConnection:Disconnect()
+                tab.DragConnection = nil
+            end
+            if tab.DragMoveConnection then
+                tab.DragMoveConnection:Disconnect()
+                tab.DragMoveConnection = nil
+            end
+            if tab.DragEndConnection then
+                tab.DragEndConnection:Disconnect()
+                tab.DragEndConnection = nil
+            end
+        end
+        return
+    end
+
+    local DragState = {
+        Active = false,
+        DraggedTab = nil,
+        PlaceholderFrame = nil,
+    }
+
+    local function GetTabIndex(tabButton)
+        for i, child in ipairs(tabButton.Parent:GetChildren()) do
+            if child:IsA("TextButton") and child == tabButton then
+                return i
+            end
+        end
+        return -1
+    end
+
+    local function GetTabAtPosition(y, container)
+        for _, child in ipairs(container:GetChildren()) do
+            if child:IsA("TextButton") and child ~= DragState.DraggedTab and child ~= DragState.PlaceholderFrame then
+                local pos = child.AbsolutePosition.Y
+                local size = child.AbsoluteSize.Y
+                if y >= pos and y <= pos + size then
+                    return child
+                end
+            end
+        end
+        return nil
+    end
+
+    for tabName, tab in pairs(Library.Tabs) do
+        if tab.IsKeyTab then continue end
+        
+        local tabButton = nil
+        local tabsContainer = nil
+        
+        for _, child in ipairs(ScreenGui:GetDescendants()) do
+            if child:IsA("ScrollingFrame") and child.Parent and child.Parent.Name == "Main" then
+                for _, btn in ipairs(child:GetChildren()) do
+                    if btn:IsA("TextButton") then
+                        local label = btn:FindFirstChildWhichIsA("TextLabel")
+                        if label and label.Text == tabName then
+                            tabButton = btn
+                            tabsContainer = child
+                            break
+                        end
+                    end
+                end
+            end
+            if tabButton then break end
+        end
+
+        if not tabButton or not tabsContainer then continue end
+
+        if tabButton.LayoutOrder == 0 then
+            tabButton.LayoutOrder = GetTabIndex(tabButton)
+        end
+
+        local dragStart = false
+        local startPos = nil
+
+        tab.DragConnection = tabButton.InputBegan:Connect(function(input)
+            if not Library.Toggled then return end
+            
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                dragStart = true
+                startPos = input.Position
+            end
+        end)
+
+        tab.DragMoveConnection = tabButton.InputChanged:Connect(function(input)
+            if not dragStart or not Library.Toggled then return end
+            
+            if input.UserInputType == Enum.UserInputType.MouseMovement then
+                if not startPos then return end
+                
+                local distance = (input.Position - startPos).Magnitude
+                
+                if distance > 10 and not DragState.Active then
+                    DragState.Active = true
+                    DragState.DraggedTab = tabButton
+                    
+                    DragState.PlaceholderFrame = Instance.new("Frame")
+                    DragState.PlaceholderFrame.BackgroundColor3 = Library.Scheme.AccentColor
+                    DragState.PlaceholderFrame.BackgroundTransparency = 0.7
+                    DragState.PlaceholderFrame.BorderSizePixel = 0
+                    DragState.PlaceholderFrame.Size = tabButton.Size
+                    DragState.PlaceholderFrame.LayoutOrder = tabButton.LayoutOrder
+                    DragState.PlaceholderFrame.Parent = tabsContainer
+                    
+                    tabButton.BackgroundTransparency = 0.5
+                    tabButton.ZIndex = 10
+                end
+                
+                if DragState.Active and DragState.DraggedTab == tabButton then
+                    local mouseY = input.Position.Y
+                    local targetTab = GetTabAtPosition(mouseY, tabsContainer)
+                    
+                    if targetTab and DragState.PlaceholderFrame then
+                        DragState.PlaceholderFrame.LayoutOrder = GetTabIndex(targetTab)
+                    end
+                end
+            end
+        end)
+
+        tab.DragEndConnection = tabButton.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                if DragState.Active and DragState.DraggedTab == tabButton and DragState.PlaceholderFrame then
+                    tabButton.LayoutOrder = DragState.PlaceholderFrame.LayoutOrder
+                    tabButton.BackgroundTransparency = Library.ActiveTab == tab and 0 or 1
+                    tabButton.ZIndex = 1
+                    
+                    DragState.PlaceholderFrame:Destroy()
+                    DragState.Active = false
+                    DragState.DraggedTab = nil
+                    DragState.PlaceholderFrame = nil
+                end
+                
+                dragStart = false
+                startPos = nil
+            end
+        end)
+    end
+end
+
+
 getgenv().Library = Library
 return Library
