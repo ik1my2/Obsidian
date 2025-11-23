@@ -7819,30 +7819,42 @@ function Library:EnableDraggableTabs(enabled)
     local DragState = {
         Active = false,
         DraggedTab = nil,
-        StartOrder = 0,
+        DraggedTabName = nil,
+        OriginalPos = nil,
         LastSwapTime = 0,
         TouchId = nil,
     }
 
-    local SWAP_COOLDOWN = 0.08
+    local SWAP_COOLDOWN = 0.1
+
+    local function GetSortedTabs(container)
+        local tabs = {}
+        for _, child in ipairs(container:GetChildren()) do
+            if child:IsA("TextButton") then
+                table.insert(tabs, child)
+            end
+        end
+        table.sort(tabs, function(a, b)
+            return a.LayoutOrder < b.LayoutOrder
+        end)
+        return tabs
+    end
 
     local function GetTabAtPosition(y, container)
-        local closest = nil
-        local minDist = math.huge
+        local tabs = GetSortedTabs(container)
         
-        for _, child in ipairs(container:GetChildren()) do
-            if child:IsA("TextButton") and child ~= DragState.DraggedTab then
-                local pos = child.AbsolutePosition.Y + child.AbsoluteSize.Y / 2
-                local dist = math.abs(y - pos)
+        for _, tab in ipairs(tabs) do
+            if tab ~= DragState.DraggedTab then
+                local top = tab.AbsolutePosition.Y
+                local bottom = top + tab.AbsoluteSize.Y
                 
-                if dist < minDist then
-                    minDist = dist
-                    closest = child
+                if y >= top and y <= bottom then
+                    return tab
                 end
             end
         end
         
-        return closest
+        return nil
     end
 
     for tabName, tab in pairs(Library.Tabs) do
@@ -7870,15 +7882,9 @@ function Library:EnableDraggableTabs(enabled)
         if not tabButton or not tabsContainer then continue end
 
         if tabButton.LayoutOrder == 0 then
-            local index = 1
-            for _, child in ipairs(tabsContainer:GetChildren()) do
-                if child:IsA("TextButton") then
-                    if child == tabButton then
-                        tabButton.LayoutOrder = index
-                        break
-                    end
-                    index = index + 1
-                end
+            local sortedTabs = GetSortedTabs(tabsContainer)
+            for i, btn in ipairs(sortedTabs) do
+                btn.LayoutOrder = i
             end
         end
 
@@ -7906,7 +7912,8 @@ function Library:EnableDraggableTabs(enabled)
                 if distance > 10 and not DragState.Active then
                     DragState.Active = true
                     DragState.DraggedTab = tabButton
-                    DragState.StartOrder = tabButton.LayoutOrder
+                    DragState.DraggedTabName = tabName
+                    DragState.OriginalPos = tabButton.LayoutOrder
                     DragState.LastSwapTime = 0
                     
                     tabButton.BackgroundTransparency = 0.5
@@ -7923,30 +7930,30 @@ function Library:EnableDraggableTabs(enabled)
                     local mouseY = input.Position.Y
                     local targetTab = GetTabAtPosition(mouseY, tabsContainer)
                     
-                    if targetTab and targetTab.LayoutOrder ~= tabButton.LayoutOrder then
+                    if targetTab and targetTab ~= tabButton then
+                        local dragOrder = tabButton.LayoutOrder
                         local targetOrder = targetTab.LayoutOrder
-                        local currentOrder = tabButton.LayoutOrder
                         
-                        if targetOrder < currentOrder then
-                            for _, child in ipairs(tabsContainer:GetChildren()) do
-                                if child:IsA("TextButton") and child ~= tabButton then
-                                    if child.LayoutOrder >= targetOrder and child.LayoutOrder < currentOrder then
-                                        child.LayoutOrder = child.LayoutOrder + 1
+                        if dragOrder ~= targetOrder then
+                            local sortedTabs = GetSortedTabs(tabsContainer)
+                            
+                            if dragOrder < targetOrder then
+                                for _, btn in ipairs(sortedTabs) do
+                                    if btn ~= tabButton and btn.LayoutOrder > dragOrder and btn.LayoutOrder <= targetOrder then
+                                        btn.LayoutOrder = btn.LayoutOrder - 1
+                                    end
+                                end
+                            else
+                                for _, btn in ipairs(sortedTabs) do
+                                    if btn ~= tabButton and btn.LayoutOrder < dragOrder and btn.LayoutOrder >= targetOrder then
+                                        btn.LayoutOrder = btn.LayoutOrder + 1
                                     end
                                 end
                             end
-                        else
-                            for _, child in ipairs(tabsContainer:GetChildren()) do
-                                if child:IsA("TextButton") and child ~= tabButton then
-                                    if child.LayoutOrder <= targetOrder and child.LayoutOrder > currentOrder then
-                                        child.LayoutOrder = child.LayoutOrder - 1
-                                    end
-                                end
-                            end
+                            
+                            tabButton.LayoutOrder = targetOrder
+                            DragState.LastSwapTime = currentTime
                         end
-                        
-                        tabButton.LayoutOrder = targetOrder
-                        DragState.LastSwapTime = currentTime
                     end
                 end
             end
@@ -7960,7 +7967,8 @@ function Library:EnableDraggableTabs(enabled)
                     
                     DragState.Active = false
                     DragState.DraggedTab = nil
-                    DragState.StartOrder = 0
+                    DragState.DraggedTabName = nil
+                    DragState.OriginalPos = nil
                     DragState.TouchId = nil
                     
                     tabsContainer.ScrollingEnabled = true
