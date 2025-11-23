@@ -7799,18 +7799,9 @@ Library:GiveSignal(Teams.ChildRemoved:Connect(OnTeamChange))
 function Library:EnableDraggableTabs(enabled)
     if not enabled then
         for _, tab in pairs(Library.Tabs) do
-            if tab.DragConnection then
-                tab.DragConnection:Disconnect()
-                tab.DragConnection = nil
-            end
-            if tab.DragMoveConnection then
-                tab.DragMoveConnection:Disconnect()
-                tab.DragMoveConnection = nil
-            end
-            if tab.DragEndConnection then
-                tab.DragEndConnection:Disconnect()
-                tab.DragEndConnection = nil
-            end
+            if tab.DragConnection then tab.DragConnection:Disconnect() tab.DragConnection = nil end
+            if tab.DragMoveConnection then tab.DragMoveConnection:Disconnect() tab.DragMoveConnection = nil end
+            if tab.DragEndConnection then tab.DragEndConnection:Disconnect() tab.DragEndConnection = nil end
         end
         return
     end
@@ -7830,13 +7821,9 @@ function Library:EnableDraggableTabs(enabled)
     local function GetSortedTabs(container)
         local tabs = {}
         for _, child in ipairs(container:GetChildren()) do
-            if child:IsA("TextButton") then
-                table.insert(tabs, child)
-            end
+            if child:IsA("TextButton") then table.insert(tabs, child) end
         end
-        table.sort(tabs, function(a, b)
-            return a.LayoutOrder < b.LayoutOrder
-        end)
+        table.sort(tabs, function(a, b) return a.LayoutOrder < b.LayoutOrder end)
         return tabs
     end
 
@@ -7846,9 +7833,7 @@ function Library:EnableDraggableTabs(enabled)
             if tab ~= DragState.DraggedTab then
                 local top = tab.AbsolutePosition.Y
                 local bottom = top + tab.AbsoluteSize.Y
-                if y >= top and y <= bottom then
-                    return tab
-                end
+                if y >= top and y <= bottom then return tab end
             end
         end
         return nil
@@ -7898,12 +7883,9 @@ function Library:EnableDraggableTabs(enabled)
         end
 
         if not tabButton or not tabsContainer then continue end
-
         if tabButton.LayoutOrder == 0 then
             local sortedTabs = GetSortedTabs(tabsContainer)
-            for i, btn in ipairs(sortedTabs) do
-                btn.LayoutOrder = i
-            end
+            for i, btn in ipairs(sortedTabs) do btn.LayoutOrder = i end
         end
 
         local dragStart = false
@@ -7928,23 +7910,18 @@ function Library:EnableDraggableTabs(enabled)
                 if not startPos then return end
                 local distance = (input.Position - startPos).Magnitude
                 if distance > DRAG_THRESHOLD and not DragState.Active then
+                    -- Drag activated internally, no visible change
                     DragState.Active = true
                     DragState.DraggedTab = tabButton
                     DragState.DraggedTabName = tabName
                     DragState.OriginalPos = tabButton.LayoutOrder
                     DragState.LastSwapTime = 0
-
-                    tabButton.BackgroundTransparency = 0.5
-                    tabButton.ZIndex = 10
                     tabsContainer.ScrollingEnabled = false
                 end
 
                 if DragState.Active and DragState.DraggedTab == tabButton then
                     local currentTime = tick()
-                    if currentTime - DragState.LastSwapTime < SWAP_COOLDOWN then
-                        return
-                    end
-
+                    if currentTime - DragState.LastSwapTime < SWAP_COOLDOWN then return end
                     local mouseY = input.Position.Y
                     local targetTab = GetTabAtPosition(mouseY, tabsContainer)
                     if targetTab and targetTab ~= tabButton then
@@ -7961,8 +7938,6 @@ function Library:EnableDraggableTabs(enabled)
                                  (input == DragState.TouchId)
             if isValidInput then
                 if DragState.Active and DragState.DraggedTab == tabButton then
-                    tabButton.BackgroundTransparency = Library.ActiveTab == tab and 0 or 1
-                    tabButton.ZIndex = 1
                     DragState.Active = false
                     DragState.DraggedTab = nil
                     DragState.DraggedTabName = nil
@@ -7979,4 +7954,3 @@ end
 
 getgenv().Library = Library
 return Library
-
