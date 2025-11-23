@@ -7822,8 +7822,9 @@ function Library:EnableDraggableTabs(enabled)
         OriginalPos = nil,
         LastSwapTime = 0,
         TouchId = nil,
-        SelectedTabForDrag = nil, 
+        SelectedTabForDrag = nil,
         SelectedTabButton = nil,
+        SelectedOriginalBorder = nil,
     }
 
     local SWAP_COOLDOWN = 0.1
@@ -7860,11 +7861,13 @@ function Library:EnableDraggableTabs(enabled)
     end
 
     local function ClearSelectedTab()
-        if DragState.SelectedTabButton then
-            DragState.SelectedTabButton.BorderSizePixel = 0
+        if DragState.SelectedTabButton and DragState.SelectedOriginalBorder then
+            DragState.SelectedTabButton.BorderSizePixel = DragState.SelectedOriginalBorder.Size
+            DragState.SelectedTabButton.BorderColor3 = DragState.SelectedOriginalBorder.Color
         end
         DragState.SelectedTabForDrag = nil
         DragState.SelectedTabButton = nil
+        DragState.SelectedOriginalBorder = nil
     end
 
     local function SwapTabs(fromButton, toButton, container)
@@ -8004,12 +8007,16 @@ function Library:EnableDraggableTabs(enabled)
                         SwapTabs(DragState.SelectedTabButton, tabButton, tabsContainer)
                         ClearSelectedTab()
                     else
-                       
+                     
                         ClearSelectedTab()
                         DragState.SelectedTabForDrag = tabName
                         DragState.SelectedTabButton = tabButton
                         
-                     
+                        
+                        DragState.SelectedOriginalBorder = {
+                            Size = tabButton.BorderSizePixel,
+                            Color = tabButton.BorderColor3
+                        }
                         tabButton.BorderSizePixel = 2
                         tabButton.BorderColor3 = Color3.fromRGB(0, 170, 255)
                     end
