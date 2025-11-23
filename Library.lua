@@ -7796,7 +7796,6 @@ Library:GiveSignal(Players.PlayerRemoving:Connect(OnPlayerChange))
 Library:GiveSignal(Teams.ChildAdded:Connect(OnTeamChange))
 Library:GiveSignal(Teams.ChildRemoved:Connect(OnTeamChange))
 
-
 function Library:EnableDraggableTabs(enabled)
     if not enabled then
         for _, tab in pairs(Library.Tabs) do
@@ -7823,9 +7822,12 @@ function Library:EnableDraggableTabs(enabled)
         OriginalPos = nil,
         LastSwapTime = 0,
         TouchId = nil,
+        SelectedTabForDrag = nil, 
+        SelectedTabButton = nil,
     }
 
     local SWAP_COOLDOWN = 0.1
+    local DRAG_THRESHOLD = 10
 
     local function GetSortedTabs(container)
         local tabs = {}
@@ -7855,6 +7857,39 @@ function Library:EnableDraggableTabs(enabled)
         end
         
         return nil
+    end
+
+    local function ClearSelectedTab()
+        if DragState.SelectedTabButton then
+            DragState.SelectedTabButton.BorderSizePixel = 0
+        end
+        DragState.SelectedTabForDrag = nil
+        DragState.SelectedTabButton = nil
+    end
+
+    local function SwapTabs(fromButton, toButton, container)
+        if fromButton == toButton then return end
+        
+        local fromOrder = fromButton.LayoutOrder
+        local toOrder = toButton.LayoutOrder
+        
+        local sortedTabs = GetSortedTabs(container)
+        
+        if fromOrder < toOrder then
+            for _, btn in ipairs(sortedTabs) do
+                if btn ~= fromButton and btn.LayoutOrder > fromOrder and btn.LayoutOrder <= toOrder then
+                    btn.LayoutOrder = btn.LayoutOrder - 1
+                end
+            end
+        else
+            for _, btn in ipairs(sortedTabs) do
+                if btn ~= fromButton and btn.LayoutOrder < fromOrder and btn.LayoutOrder >= toOrder then
+                    btn.LayoutOrder = btn.LayoutOrder + 1
+                end
+            end
+        end
+        
+        fromButton.LayoutOrder = toOrder
     end
 
     for tabName, tab in pairs(Library.Tabs) do
@@ -7890,6 +7925,7 @@ function Library:EnableDraggableTabs(enabled)
 
         local dragStart = false
         local startPos = nil
+        local startTime = 0
 
         tab.DragConnection = tabButton.InputBegan:Connect(function(input)
             if not Library.Toggled then return end
@@ -7897,19 +7933,26 @@ function Library:EnableDraggableTabs(enabled)
             if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
                 dragStart = true
                 startPos = input.Position
-                DragState.TouchId = input.UserInputType == Enum.UserInputType.Touch and input or nil
+                startTime = tick()
+                
+                if input.UserInputType == Enum.UserInputType.Touch then
+                    DragState.TouchId = input
+                end
             end
         end)
 
         tab.DragMoveConnection = tabButton.InputChanged:Connect(function(input)
             if not dragStart or not Library.Toggled then return end
             
-            if input.UserInputType == Enum.UserInputType.MouseMovement or input == DragState.TouchId then
+            local isValidInput = (input.UserInputType == Enum.UserInputType.MouseMovement) or 
+                                 (input.UserInputType == Enum.UserInputType.Touch and input == DragState.TouchId)
+            
+            if isValidInput then
                 if not startPos then return end
                 
                 local distance = (input.Position - startPos).Magnitude
                 
-                if distance > 10 and not DragState.Active then
+                if distance > DRAG_THRESHOLD and not DragState.Active then
                     DragState.Active = true
                     DragState.DraggedTab = tabButton
                     DragState.DraggedTabName = tabName
@@ -7919,6 +7962,8 @@ function Library:EnableDraggableTabs(enabled)
                     tabButton.BackgroundTransparency = 0.5
                     tabButton.ZIndex = 10
                     tabsContainer.ScrollingEnabled = false
+                    
+                    ClearSelectedTab()
                 end
                 
                 if DragState.Active and DragState.DraggedTab == tabButton then
@@ -7931,36 +7976,19 @@ function Library:EnableDraggableTabs(enabled)
                     local targetTab = GetTabAtPosition(mouseY, tabsContainer)
                     
                     if targetTab and targetTab ~= tabButton then
-                        local dragOrder = tabButton.LayoutOrder
-                        local targetOrder = targetTab.LayoutOrder
-                        
-                        if dragOrder ~= targetOrder then
-                            local sortedTabs = GetSortedTabs(tabsContainer)
-                            
-                            if dragOrder < targetOrder then
-                                for _, btn in ipairs(sortedTabs) do
-                                    if btn ~= tabButton and btn.LayoutOrder > dragOrder and btn.LayoutOrder <= targetOrder then
-                                        btn.LayoutOrder = btn.LayoutOrder - 1
-                                    end
-                                end
-                            else
-                                for _, btn in ipairs(sortedTabs) do
-                                    if btn ~= tabButton and btn.LayoutOrder < dragOrder and btn.LayoutOrder >= targetOrder then
-                                        btn.LayoutOrder = btn.LayoutOrder + 1
-                                    end
-                                end
-                            end
-                            
-                            tabButton.LayoutOrder = targetOrder
-                            DragState.LastSwapTime = currentTime
-                        end
+                        SwapTabs(tabButton, targetTab, tabsContainer)
+                        DragState.LastSwapTime = currentTime
                     end
                 end
             end
         end)
 
         tab.DragEndConnection = tabButton.InputEnded:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch or input == DragState.TouchId then
+            local isValidInput = (input.UserInputType == Enum.UserInputType.MouseButton1) or 
+                                 (input.UserInputType == Enum.UserInputType.Touch) or 
+                                 (input == DragState.TouchId)
+            
+            if isValidInput then
                 if DragState.Active and DragState.DraggedTab == tabButton then
                     tabButton.BackgroundTransparency = Library.ActiveTab == tab and 0 or 1
                     tabButton.ZIndex = 1
@@ -7969,9 +7997,22 @@ function Library:EnableDraggableTabs(enabled)
                     DragState.DraggedTab = nil
                     DragState.DraggedTabName = nil
                     DragState.OriginalPos = nil
-                    DragState.TouchId = nil
                     
                     tabsContainer.ScrollingEnabled = true
+                elseif dragStart and (tick() - startTime) < 0.3 then
+                    if DragState.SelectedTabForDrag and DragState.SelectedTabButton ~= tabButton then
+                        SwapTabs(DragState.SelectedTabButton, tabButton, tabsContainer)
+                        ClearSelectedTab()
+                    else
+                       
+                        ClearSelectedTab()
+                        DragState.SelectedTabForDrag = tabName
+                        DragState.SelectedTabButton = tabButton
+                        
+                     
+                        tabButton.BorderSizePixel = 2
+                        tabButton.BorderColor3 = Color3.fromRGB(0, 170, 255)
+                    end
                 end
                 
                 dragStart = false
